@@ -19,7 +19,7 @@ from typing import Dict, List, Optional
 
 import tiktoken  # type: ignore[import-untyped]
 
-from openrouter_ai.models import RoutingDecision
+from openrouter_ai.models import ModelChoice, RoutingDecision
 from openrouter_ai.utils.groq_client import groq_chat_completion_full
 
 
@@ -99,6 +99,47 @@ class ExecutorAgent:
         return {
             "response_text": result.text.strip(),
             "model_used": decision.selected_model,
+            "latency_ms": round(latency_ms, 1),
+            "input_tokens": input_tokens,
+            "output_tokens": output_tokens,
+        }
+
+    async def execute_for_model(
+        self,
+        user_prompt: str,
+        model: ModelChoice,
+        system_prompt: Optional[str] = None,
+        *,
+        max_tokens: int = 1024,
+        temperature: float = 0.3,
+    ) -> dict:
+        """Run Groq chat with an explicit model (e.g. live baseline / A-B)."""
+        if not self._groq_key:
+            raise ValueError("GROQ_API_KEY is required for Groq calls")
+
+        messages = self._build_messages(user_prompt, system_prompt)
+        model_id = model.value
+
+        t0 = time.perf_counter()
+        call = partial(
+            groq_chat_completion_full,
+            self._groq_key,
+            model_id,
+            messages,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            timeout=120,
+        )
+        result = await asyncio.to_thread(call)
+        latency_ms = (time.perf_counter() - t0) * 1000
+
+        fb_in, fb_out = self._token_counts_fallback(messages, result.text)
+        input_tokens = result.prompt_tokens if result.prompt_tokens is not None else fb_in
+        output_tokens = result.completion_tokens if result.completion_tokens is not None else fb_out
+
+        return {
+            "response_text": result.text.strip(),
+            "model_used": model,
             "latency_ms": round(latency_ms, 1),
             "input_tokens": input_tokens,
             "output_tokens": output_tokens,

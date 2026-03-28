@@ -1,8 +1,10 @@
+# Slow network: pip install --default-timeout=300 --retries 10 -r requirements.txt
 fastapi
 uvicorn
 python-dotenv
 pydantic
 streamlit
+pandas
 tqdm
 requests
 tiktoken

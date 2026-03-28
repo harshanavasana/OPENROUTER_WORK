@@ -1,5 +1,5 @@
 """
-LLM routing "brain" — visualizes complexity, cost, latency, tokens, and model choice.
+LLM routing UI: live router + optimization dashboard.
 
 Run from repo root:
   python -m streamlit run openrouter_ai/ui/brain_app.py
@@ -28,9 +28,14 @@ import streamlit as st
 
 from openrouter_ai.pipeline import OpenRouterPipeline
 from openrouter_ai.models import RoutingRequest
-from openrouter_ai.router.smart_router import model_comparison_table, comparison_for_prompt
+from openrouter_ai.router.smart_router import brain_central_model, comparison_for_prompt, model_comparison_table
+from openrouter_ai.ui.dashboard_panel import render_dashboard
 
-st.set_page_config(page_title="LLM Brain Router", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(
+    page_title="AI Router — Live + Dashboard",
+    layout="wide",
+    initial_sidebar_state="expanded",
+)
 
 
 def _fmt_features(features: dict) -> str:
@@ -40,11 +45,12 @@ def _fmt_features(features: dict) -> str:
     return "\n".join(lines) if lines else "_No feature flags_"
 
 
-def main() -> None:
-    st.title("LLM brain router")
+def render_router_tab() -> None:
+    st.subheader("Live router")
     st.caption(
         "Flow: **prompt rewrite (optional)** → **complexity** (features + ML score) → "
-        "**router** (cost · latency · tokens · tier) → **one Groq Llama** to answer."
+        "**router** (10-model Groq catalogue) → **one model** to answer. "
+        "Each full run appends a row to the **dashboard** event log."
     )
 
     groq_key = os.getenv("GROQ_API_KEY", "").strip()
@@ -69,10 +75,19 @@ def main() -> None:
             value=False,
             help="Classify + route locally and show the brain; no executor call.",
         )
+        run_live_baseline = st.toggle(
+            "**Live A/B**: also call brain model (2× Groq cost)",
+            value=False,
+            help="Runs the central brain model after the routed answer for apples-to-apples latency/cost on the same prompt.",
+        )
         st.divider()
         st.markdown(
-            "Extra speed: set `GROQ_OPTIMIZER_SKIP_BELOW_TOKENS=16` in `.env` so tiny prompts "
-            "skip the rewriter automatically."
+            "Baseline for savings: **`"
+            + brain_central_model().value
+            + "`** — set `ROUTER_BRAIN_MODEL` to override."
+        )
+        st.markdown(
+            "Optional: `GROQ_OPTIMIZER_SKIP_BELOW_TOKENS=16` in `.env` skips rewriter on tiny prompts."
         )
 
     prompt = st.text_area("Your prompt / question", height=140, placeholder="Ask anything…")
@@ -98,6 +113,7 @@ def main() -> None:
         prefer_speed=prefer_speed,
         max_budget_usd=max_budget,
         skip_optimizer_llm=skip_opt,
+        run_baseline_live=run_live_baseline,
     )
     pipe = OpenRouterPipeline()
 
@@ -110,7 +126,7 @@ def main() -> None:
             decision = pipe.analyze_routing_sync(req)
             exec_in = decision.optimized_prompt.tokens_optimized
             exec_out = 200
-            status.success("Done — routing preview only.")
+            status.success("Done — routing preview only (nothing written to dashboard log).")
         else:
             def on_routed(d):
                 status.info(
@@ -121,19 +137,39 @@ def main() -> None:
             result = pipe.run_sync(req, on_routed=on_routed)
             decision = result.decision
             exec_in, exec_out = result.input_tokens, result.output_tokens
-            status.success("Done — full pipeline.")
+            status.success("Done — full pipeline (dashboard log updated).")
 
-        # --- Brain dashboard ---
         st.divider()
         st.subheader("Brain output — suggested model & drivers")
-        c1, c2, c3, c4 = st.columns(4)
-        c1.metric("Suggested model", decision.selected_model.value, help="Groq Llama id used as the worker")
+        c1, c2, c3, c4, c5 = st.columns(5)
+        c1.metric("Suggested model", decision.selected_model.value, help="Groq model id used as the worker")
         c2.metric("Complexity", f"{decision.complexity.level.value} ({decision.complexity.score:.2f})")
         c3.metric("Est. $ (router)", f"{decision.estimated_cost_usd:.6f}")
         c4.metric("Catalog latency p50", f"{decision.estimated_latency_ms:.0f} ms")
+        if result is not None:
+            c5.metric("Est. savings vs brain", f"${result.est_savings_vs_brain_usd:.6f}")
+
+        if result is not None:
+            st.markdown("**Baseline vs routed (catalog estimates on same tokens)**")
+            b1, b2, b3, b4 = st.columns(4)
+            b1.metric("Brain model", result.brain_central_model)
+            b2.metric("Brain est. $", f"{result.baseline_est_cost_usd:.6f}")
+            b3.metric("Brain est. latency (catalog)", f"{result.baseline_est_latency_ms:.0f} ms")
+            b4.metric("Δ latency (routed wall − brain cat.)", f"{result.est_latency_delta_vs_brain_ms:+.0f} ms")
+            if result.baseline_live_cost_usd is not None:
+                st.markdown("**Live A/B (second Groq call)**")
+                l1, l2 = st.columns(2)
+                l1.metric("Brain live $ (est.)", f"{result.baseline_live_cost_usd:.6f}")
+                l2.metric("Brain live latency", f"{result.baseline_live_latency_ms:.0f} ms")
+                if result.baseline_live_response_preview:
+                    with st.expander("Brain reply preview (truncated)"):
+                        st.text(result.baseline_live_response_preview)
 
         op = decision.optimized_prompt
-        st.markdown("**Why this model?** The router combines your **complexity tier**, **token size**, and **cost vs speed** toggles with a fixed catalog (cheaper 8B → mid Llama 4 Scout → 70B for heavy prompts).")
+        st.markdown(
+            "**Why this model?** The router combines your **complexity tier**, **token size**, and **cost vs speed** "
+            "toggles with a **10-model** Groq catalogue (see dashboard for full comparison table)."
+        )
 
         t1, t2 = st.columns(2)
         with t1:
@@ -160,7 +196,7 @@ def main() -> None:
         st.markdown("**Router narrative**")
         st.info(decision.rationale)
 
-        st.markdown("**All models vs this prompt size** (est. cost · quality · latency)")
+        st.markdown("**All catalog models vs this prompt size** (est. cost · quality · latency)")
         st.dataframe(
             model_comparison_table(decision.selected_model, exec_in, exec_out),
             use_container_width=True,
@@ -184,6 +220,15 @@ def main() -> None:
 
     except Exception as e:
         st.error(f"{type(e).__name__}: {e}")
+
+
+def main() -> None:
+    st.title("AI model routing optimization")
+    tab_live, tab_dash = st.tabs(["Live router", "Optimization dashboard"])
+    with tab_live:
+        render_router_tab()
+    with tab_dash:
+        render_dashboard()
 
 
 if __name__ == "__main__":

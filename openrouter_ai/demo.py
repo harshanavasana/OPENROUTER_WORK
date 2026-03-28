@@ -54,7 +54,7 @@ def print_routing_report(result) -> None:
 def main():
     print("openrouter_ai demo — enter a prompt, or 'quit' to exit")
     print("Tests:  .venv\\Scripts\\python.exe -m pytest")
-    print("UI:     .venv\\Scripts\\python.exe -m streamlit run ui\\brain_app.py")
+    print("UI:     .venv\\Scripts\\python.exe -m streamlit run ui\\brain_app.py  (router + dashboard tabs)")
     while True:
         try:
             text = input("-> ").strip()
