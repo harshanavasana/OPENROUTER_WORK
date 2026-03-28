@@ -1,0 +1,10 @@
+fastapi
+uvicorn
+python-dotenv
+pydantic
+streamlit
+tqdm
+requests
+tiktoken
+pytest
+scikit-learn
