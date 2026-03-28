@@ -127,6 +127,8 @@ class ComplexityClassifier:
             ("Define machine learning.", "simple"),
             ("Who wrote Hamlet?", "simple"),
             ("Convert 100 USD to EUR.", "simple"),
+            ("What is a stack?", "simple"),
+            ("Give me a real-life example of a queue.", "simple"),
             # medium
             ("Explain how HTTPS works.", "medium"),
             ("Compare REST and GraphQL APIs.", "medium"),
@@ -134,6 +136,7 @@ class ComplexityClassifier:
             ("Summarise this paragraph: The quick brown fox...", "medium"),
             ("What are the pros and cons of microservices?", "medium"),
             ("Explain the difference between SQL and NoSQL databases.", "medium"),
+            ("Explain what a stack data structure is with a real-life example.", "medium"),
             ("How does TCP/IP work?", "medium"),
             ("Write a cover letter for a software engineer role.", "medium"),
             # complex

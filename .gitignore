@@ -6,3 +6,5 @@ venv/
 .venv/
 .pytest_cache/
 .vscode/
+*.pkl
+data/*.db

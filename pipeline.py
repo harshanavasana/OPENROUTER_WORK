@@ -46,6 +46,9 @@ from openrouter_ai.utils.dashboard_store import (
     infer_query_type,
     routing_intelligence_score,
 )
+from openrouter_ai.utils.privacy import detect_pii
+from openrouter_ai.agents.feedback_agent import FeedbackAgent
+import asyncio
 
 # Load secrets from openrouter_ai/.env regardless of current working directory.
 load_dotenv(Path(__file__).resolve().parent / ".env")
@@ -73,6 +76,8 @@ class OpenRouterPipeline:
         self.router      = SmartRouter()
         # Stage 4 — Executor
         self.executor    = ExecutorAgent(groq_api_key=self._groq_key)
+        # Background — Feedback / Learning (TOON)
+        self.feedback    = FeedbackAgent(groq_api_key=self._groq_key, classifier=self.classifier)
         # Support systems
         self.credits     = CreditSystem()
         self.analytics   = AnalyticsEngine()
@@ -88,12 +93,17 @@ class OpenRouterPipeline:
             optimized_prompt = await self.optimizer.optimize(request.prompt)
 
         complexity = self.classifier.classify(optimized_prompt.optimized)
+        
+        # Privacy Edge Check
+        has_pii = detect_pii(request.prompt)
+        
         return self.router.route(
             complexity=complexity,
             optimized_prompt=optimized_prompt,
             prefer_cost=request.prefer_cost,
             prefer_speed=request.prefer_speed,
             max_budget_usd=request.max_budget_usd,
+            requires_edge=has_pii or request.requires_edge,
         )
 
     def analyze_routing_sync(self, request: RoutingRequest) -> RoutingDecision:
@@ -238,6 +248,13 @@ class OpenRouterPipeline:
             latency_ms=exec_result["latency_ms"],
             rate_limit_remaining=999,
         )
+
+        # Fire and forget the background self-learning logic using TOON format!
+        # Do not block the pipeline awaiting this feedback.
+        if exec_result["response_text"]:
+            asyncio.create_task(
+                self.feedback.evaluate_and_learn(request.prompt, exec_result["response_text"])
+            )
 
         return RouteResponse(
             request_id=request_id,

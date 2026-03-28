@@ -33,8 +33,10 @@ class ModelChoice(str, Enum):
     GPT_OSS_120B = "openai/gpt-oss-120b"
     QWEN25_32B = "qwen-2.5-32b"
     QWEN3_32B = "qwen/qwen3-32b"
-    # Flagship — default “brain” baseline for routing comparisons
     LLAMA3_70B_8192 = "llama-3.3-70b-versatile"
+
+    # Privacy Edge Falback model
+    EDGE_LOCAL_LLAMA3 = "ollama/llama3.2"
 
 
 class ModelMetrics(BaseModel):
@@ -73,6 +75,8 @@ class RoutingRequest(BaseModel):
     skip_optimizer_llm: bool = False
     # Second Groq call using the brain model for live A/B (2× cost/latency)
     run_baseline_live: bool = False
+    # Local forced bypass
+    requires_edge: bool = False
 
 
 class RouteResponse(BaseModel):

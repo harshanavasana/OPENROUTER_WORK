@@ -121,12 +121,20 @@ _MODEL_CATALOGUE: dict[ModelChoice, ModelMetrics] = {
         quality_score=0.96,
         rate_limit_remaining=1000,
     ),
+    ModelChoice.EDGE_LOCAL_LLAMA3: ModelMetrics(
+        model=ModelChoice.EDGE_LOCAL_LLAMA3,
+        input_cost_per_1k=0.0,
+        output_cost_per_1k=0.0,
+        avg_latency_ms=3000,
+        quality_score=0.75,
+        rate_limit_remaining=9999,
+    ),
 }
 
 
 def cost_ladder() -> list[ModelChoice]:
     """Cheapest → most expensive for a reference token mix (used for budget downgrades)."""
-    models = list(_MODEL_CATALOGUE.keys())
+    models = [m for m in _MODEL_CATALOGUE.keys() if m != ModelChoice.EDGE_LOCAL_LLAMA3]
     models.sort(key=lambda m: _estimate_cost(m, 500, 200))
     return models
 
@@ -243,25 +251,29 @@ class SmartRouter:
         prefer_cost: bool = True,
         prefer_speed: bool = False,
         max_budget_usd: Optional[float] = None,
+        requires_edge: bool = False,
     ) -> RoutingDecision:
 
-        mode = "speed" if prefer_speed else ("cost" if prefer_cost else "default")
-        selected = self._MATRIX[complexity.level][mode]
+        if requires_edge:
+            selected = ModelChoice.EDGE_LOCAL_LLAMA3
+        else:
+            mode = "speed" if prefer_speed else ("cost" if prefer_cost else "default")
+            selected = self._MATRIX[complexity.level][mode]
 
-        ladder = cost_ladder()
-        if max_budget_usd is not None:
-            for model in ladder:
-                est = _estimate_cost(model, optimized_prompt.tokens_optimized)
-                if est <= max_budget_usd:
-                    selected = model
-                    break
+            ladder = cost_ladder()
+            if max_budget_usd is not None:
+                for model in ladder:
+                    est = _estimate_cost(model, optimized_prompt.tokens_optimized)
+                    if est <= max_budget_usd:
+                        selected = model
+                        break
 
-        metrics = _MODEL_CATALOGUE[selected]
-        if metrics.rate_limit_remaining < 5:
-            for fallback in ladder:
-                if _MODEL_CATALOGUE[fallback].rate_limit_remaining >= 5:
-                    selected = fallback
-                    break
+            metrics = _MODEL_CATALOGUE[selected]
+            if metrics.rate_limit_remaining < 5:
+                for fallback in ladder:
+                    if _MODEL_CATALOGUE[fallback].rate_limit_remaining >= 5:
+                        selected = fallback
+                        break
 
         metrics = _MODEL_CATALOGUE[selected]
         est_cost = _estimate_cost(selected, optimized_prompt.tokens_optimized)

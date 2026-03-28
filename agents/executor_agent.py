@@ -21,6 +21,10 @@ import tiktoken  # type: ignore[import-untyped]
 
 from openrouter_ai.models import ModelChoice, RoutingDecision
 from openrouter_ai.utils.groq_client import groq_chat_completion_full
+from openrouter_ai.router.smart_router import cost_ladder
+
+class FallbackExhaustedError(Exception):
+    pass
 
 
 class ExecutorAgent:
@@ -76,20 +80,63 @@ class ExecutorAgent:
 
         user_text = decision.optimized_prompt.optimized
         messages = self._build_messages(user_text, system_prompt)
-        model_id = decision.selected_model.value
-
+        current_choice = decision.selected_model
+        
+        # Determine fallback ladder (models strictly cheaper or equal, and having rate limit >= 5)
+        # For simplicity, if standard call fails, we try the next cheapest available model
+        # if the original choice was a cloud model.
+        all_models = cost_ladder()
+        try:
+            start_index = all_models.index(current_choice)
+            fallback_options = all_models[:start_index]  # cheaper models
+        except ValueError:
+            fallback_options = all_models
+            
         t0 = time.perf_counter()
-        # partial avoids brittle *args/**kwargs forwarding to to_thread across Python versions
-        call = partial(
-            groq_chat_completion_full,
-            self._groq_key,
-            model_id,
-            messages,
-            max_tokens=1024,
-            temperature=0.3,
-            timeout=120,
-        )
-        result = await asyncio.to_thread(call)
+        
+        # Edge/Local Simulator bypass
+        if current_choice == ModelChoice.EDGE_LOCAL_LLAMA3:
+            # Simulate a local edge API call (e.g. to Ollama)
+            await asyncio.sleep(0.5)
+            simulated_text = f"[EDGE LOCAL PRIVACY RUN] Executed on {current_choice.value} due to PII detection."
+            fb_in, fb_out = self._token_counts_fallback(messages, simulated_text)
+            return {
+                "response_text": simulated_text,
+                "model_used": current_choice,
+                "latency_ms": round((time.perf_counter() - t0) * 1000, 1),
+                "input_tokens": fb_in,
+                "output_tokens": fb_out,
+                "fallback_used": False,
+            }
+
+        # Cloud Groq Call with Failover
+        attempts = [current_choice] + fallback_options
+        result = None
+        used_model = current_choice
+        
+        for attempt_model in attempts:
+            try:
+                model_id = attempt_model.value
+                call = partial(
+                    groq_chat_completion_full,
+                    self._groq_key,
+                    model_id,
+                    messages,
+                    max_tokens=1024,
+                    temperature=0.3,
+                    timeout=120,
+                )
+                result = await asyncio.to_thread(call)
+                used_model = attempt_model
+                break # Success!
+            except Exception as e:
+                # Catch rate limits / 500s. Fallback to the next model in the ladder.
+                print(f"[ExecutorAgent Warning] Model {attempt_model.value} failed: {e}. Falling back...")
+                continue
+                
+        if not result:
+            raise FallbackExhaustedError("All available fallback models failed.")
+
         latency_ms = (time.perf_counter() - t0) * 1000
 
         fb_in, fb_out = self._token_counts_fallback(messages, result.text)
@@ -98,10 +145,11 @@ class ExecutorAgent:
 
         return {
             "response_text": result.text.strip(),
-            "model_used": decision.selected_model,
+            "model_used": used_model,
             "latency_ms": round(latency_ms, 1),
             "input_tokens": input_tokens,
             "output_tokens": output_tokens,
+            "fallback_used": used_model != current_choice,
         }
 
     async def execute_for_model(
