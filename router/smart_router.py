@@ -230,17 +230,17 @@ class SmartRouter:
         ComplexityLevel.SIMPLE: {
             "cost": ModelChoice.LLAMA3_8B_8192,
             "speed": ModelChoice.LLAMA3_8B_8192,
-            "default": ModelChoice.LLAMA3_8B_8192,
+            "default": ModelChoice.GPT_OSS_20B,
         },
         ComplexityLevel.MEDIUM: {
-            "cost": ModelChoice.LLAMA3_8B_8192,
-            "speed": ModelChoice.MIXTRAL_8X7B_32768,
-            "default": ModelChoice.GPT_OSS_20B,
+            "cost": ModelChoice.MIXTRAL_LEGACY_8X7B,
+            "speed": ModelChoice.LLAMA4_MAVERICK,
+            "default": ModelChoice.QWEN3_32B,
         },
         ComplexityLevel.COMPLEX: {
             "cost": ModelChoice.GPT_OSS_120B,
             "speed": ModelChoice.LLAMA3_70B_8192,
-            "default": ModelChoice.LLAMA3_70B_8192,
+            "default": ModelChoice.QWEN25_32B,
         },
     }
 

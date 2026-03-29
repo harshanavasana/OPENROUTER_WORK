@@ -8,3 +8,4 @@ venv/
 .vscode/
 *.pkl
 data/*.db
+data/*.jsonl
