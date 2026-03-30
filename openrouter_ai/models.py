@@ -61,11 +61,13 @@ class RoutingDecision(BaseModel):
     estimated_cost_usd: float
     estimated_latency_ms: float
     rationale: str
+    user_api_keys: Optional[Dict[str, str]] = None
 
 
 class RoutingRequest(BaseModel):
     prompt: str
     user_id: Optional[str] = None
+    user_api_keys: Optional[Dict[str, str]] = None
     prefer_cost: bool = True
     prefer_speed: bool = False
     max_budget_usd: Optional[float] = None

@@ -123,7 +123,7 @@ class OpenRouterPipeline:
             on_routed(decision)
 
         # ── Stage 4: Execute ───────────────────────────────────────────────────
-        exec_result = await self.executor.execute(decision, system_prompt=self._system)
+        exec_result = await self.executor.execute(decision, system_prompt=self._system, user_api_keys=request.user_api_keys)
 
         total_latency_ms = (time.perf_counter() - t_pipeline_start) * 1000
 
@@ -290,5 +290,6 @@ def run_pipeline(
         prefer_speed=prefer_speed,
         max_budget_usd=max_budget_usd,
         skip_optimizer_llm=skip_optimizer_llm,
+        user_api_keys=None, # In demo/cli, we use default None
     )
     return pipeline.run_sync(request, on_routed=on_routed)
