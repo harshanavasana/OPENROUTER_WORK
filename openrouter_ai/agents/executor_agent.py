@@ -56,6 +56,7 @@ class ExecutorAgent:
         self,
         decision: RoutingDecision,
         system_prompt: Optional[str] = None,
+        user_api_keys: Optional[Dict[str, str]] = None,
     ) -> dict:
         """
         Async execution with Groq chat completions.
@@ -78,11 +79,18 @@ class ExecutorAgent:
         messages = self._build_messages(user_text, system_prompt)
         model_id = decision.selected_model.value
 
+        api_key_to_use = self._groq_key
+        if user_api_keys and model_id in user_api_keys and user_api_keys[model_id].strip():
+            api_key_to_use = user_api_keys[model_id].strip()
+
+        if not api_key_to_use:
+            raise ValueError("API Key is required for Groq calls. Default or custom key missing.")
+
         t0 = time.perf_counter()
         # partial avoids brittle *args/**kwargs forwarding to to_thread across Python versions
         call = partial(
             groq_chat_completion_full,
-            self._groq_key,
+            api_key_to_use,
             model_id,
             messages,
             max_tokens=1024,

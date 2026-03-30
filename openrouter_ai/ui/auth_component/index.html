@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Firebase Auth</title>
+  <!-- Firebase App (the core Firebase SDK) is always required and must be listed first -->
+  <script src="https://www.gstatic.com/firebasejs/10.9.0/firebase-app-compat.js"></script>
+  <!-- Add Firebase products that you want to use -->
+  <script src="https://www.gstatic.com/firebasejs/10.9.0/firebase-auth-compat.js"></script>
+  <!-- Firebase UI -->
+  <script src="https://www.gstatic.com/firebasejs/ui/6.1.0/firebase-ui-auth.js"></script>
+  <link type="text/css" rel="stylesheet" href="https://www.gstatic.com/firebasejs/ui/6.1.0/firebase-ui-auth.css" />
+  <style>
+    body { font-family: sans-serif; margin: 0; padding: 0.5rem; text-align: center; }
+    h2 { color: #333; }
+  </style>
+</head>
+<body>
+  <h2>Sign In to Brain Router</h2>
+  <div id="firebaseui-auth-container"></div>
+  <script>
+    // Streamlit Component setup
+    function sendMessageToStreamlit(type, data) {
+      window.parent.postMessage({
+        isStreamlitMessage: true,
+        type: type,
+        ...data
+      }, "*");
+    }
+
+    // Initialize Firebase
+    const firebaseConfig = {
+      apiKey: "AIzaSyCEi9SO6luN_mnXeGkA1NOZUvr4_DnMcHs",
+      authDomain: "open-router-64d3c.firebaseapp.com",
+      projectId: "open-router-64d3c",
+      storageBucket: "open-router-64d3c.firebasestorage.app",
+      messagingSenderId: "399689221813",
+      appId: "1:399689221813:web:6b5fa84da89e866994a0fc"
+    };
+    firebase.initializeApp(firebaseConfig);
+
+    const ui = new firebaseui.auth.AuthUI(firebase.auth());
+    const uiConfig = {
+      callbacks: {
+        signInSuccessWithAuthResult: function(authResult, redirectUrl) {
+          authResult.user.getIdToken().then(function(idToken) {
+            sendMessageToStreamlit("streamlit:setComponentValue", {
+              value: {
+                token: idToken,
+                uid: authResult.user.uid,
+                email: authResult.user.email,
+                displayName: authResult.user.displayName
+              }
+            });
+          });
+          return false; // Do not redirect
+        }
+      },
+      signInFlow: 'popup',
+      signInOptions: [
+        firebase.auth.GoogleAuthProvider.PROVIDER_ID,
+        firebase.auth.EmailAuthProvider.PROVIDER_ID
+      ]
+    };
+
+    ui.start('#firebaseui-auth-container', uiConfig);
+
+    // Tell Streamlit we're ready
+    sendMessageToStreamlit("streamlit:componentReady", { apiVersion: 1 });
+
+    // Initial frame height
+    sendMessageToStreamlit("streamlit:setFrameHeight", { height: 400 });
+  </script>
+</body>
+</html>
